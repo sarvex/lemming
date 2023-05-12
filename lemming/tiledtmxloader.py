@@ -105,8 +105,7 @@ class ImageLoaderPyglet(IImageLoader):
 
     def load_image_part(self, filename, x, y, w, h, colorkey=None):
         image = self.load_image(filename, colorkey)
-        img_part = image.get_region(x, y, w, h)
-        return img_part
+        return image.get_region(x, y, w, h)
 
 
     def load_image_parts(self, filename, margin, spacing, tile_width, tile_height, colorkey=None): #-> [images]
@@ -252,16 +251,21 @@ class TileMap(object):
             # tiles
             for tile in tile_set.tiles:
                 for img in tile.images:
-                    if not img.content and not img.source:
+                    if (
+                        img.content
+                        and img.source
+                        or not img.content
+                        and img.source
+                    ):
+                        self._load_image_from_source(tile_set, img)
+                    elif img.content:
+                        indexed_img = self._load_image(img)
+                        self.indexed_tiles[int(tile_set.firstgid) + int(tile.id)] = (0, 0, indexed_img)
+
+                    else:
                         # only image id set
                         indexed_img = tile_set.indexed_images[img.id]
                         self.indexed_tiles[int(tile_set.firstgid) + int(tile.id)] = (0, 0, indexed_img)
-                    else:
-                        if img.source:
-                            self._load_image_from_source(tile_set, img)
-                        else:
-                            indexed_img = self._load_image(img)
-                            self.indexed_tiles[int(tile_set.firstgid) + int(tile.id)] = (0, 0, indexed_img)
 
     def _load_image_from_source(self, tile_set, a_tile_image):
         # relative path to file
@@ -273,14 +277,10 @@ class TileMap(object):
         if tile_set.tilewidth:
             tile_height = int(tile_set.tileheight)
         offsetx = 0
-        offsety = 0
-        if tile_height > self.tileheight:
-            offsety = tile_height - self.tileheight
-        idx = 0
-        for image in self._image_loader.load_image_parts(img_path, \
-                    tile_set.margin, tile_set.spacing, tile_width, tile_height, a_tile_image.trans):
+        offsety = tile_height - self.tileheight if tile_height > self.tileheight else 0
+        for idx, image in enumerate(self._image_loader.load_image_parts(img_path, \
+                        tile_set.margin, tile_set.spacing, tile_width, tile_height, a_tile_image.trans)):
             self.indexed_tiles[int(tile_set.firstgid) + idx] = (offsetx, -offsety, image)
-            idx += 1
 
     def _load_image(self, a_tile_image):
         img_str = a_tile_image.content
@@ -288,10 +288,9 @@ class TileMap(object):
             if a_tile_image.encoding == u'base64':
                 img_str = decode_base64(a_tile_image.content)
             else:
-                raise Exception(u'unknown image encoding %s' % a_tile_image.encoding)
+                raise Exception(f'unknown image encoding {a_tile_image.encoding}')
         sio = StringIO.StringIO(img_str)
-        new_image = self._image_loader.load_image_file_like(sio, a_tile_image.trans)
-        return new_image
+        return self._image_loader.load_image_file_like(sio, a_tile_image.trans)
 
     def decode(self):
         u"""
@@ -463,35 +462,34 @@ class TileLayer(object):
         tiles. If necessairy it decodes and uncompresses the contents.
         """
         self.decoded_content = []
-        if self.encoded_content:
-            s = self.encoded_content
-            if self.encoding:
-                if self.encoding.lower() == u'base64':
-                    s = decode_base64(s)
-                elif self.encoding.lower() == u'csv':
-                    list_of_lines = s.split()
-                    for line in list_of_lines:
-                        self.decoded_content.extend(line.split(','))
-                    self.decoded_content = map(int, [val for val in self.decoded_content if val])
-                    s = ""
-                else:
-                    raise Exception(u'unknown data encoding %s' % (self.encoding))
-            else:
-                # in the case of xml the encoded_content already contains a list of integers
-                self.decoded_content = map(int, self.encoded_content)
-                s = ""
-            if self.compression:
-                if self.compression == u'gzip':
-                    s = decompress_gzip(s)
-                elif self.compression == u'zlib':
-                    s = decompress_zlib(s)
-                else:
-                    raise Exception(u'unknown data compression %s' %(self.compression))
-        else:
+        if not self.encoded_content:
             raise Exception(u'no encoded content to decode')
+        s = self.encoded_content
+        if self.encoding:
+            if self.encoding.lower() == u'base64':
+                s = decode_base64(s)
+            elif self.encoding.lower() == u'csv':
+                list_of_lines = s.split()
+                for line in list_of_lines:
+                    self.decoded_content.extend(line.split(','))
+                self.decoded_content = map(int, [val for val in self.decoded_content if val])
+                s = ""
+            else:
+                raise Exception(f'unknown data encoding {self.encoding}')
+        else:
+            # in the case of xml the encoded_content already contains a list of integers
+            self.decoded_content = map(int, self.encoded_content)
+            s = ""
+        if self.compression:
+            if self.compression == u'gzip':
+                s = decompress_gzip(s)
+            elif self.compression == u'zlib':
+                s = decompress_zlib(s)
+            else:
+                raise Exception(f'unknown data compression {self.compression}')
         for idx in xrange(0, len(s), 4):
             val = ord(str(s[idx])) | (ord(str(s[idx + 1])) << 8) | \
-                 (ord(str(s[idx + 2])) << 16) | (ord(str(s[idx + 3])) << 24)
+                     (ord(str(s[idx + 2])) << 16) | (ord(str(s[idx + 3])) << 24)
             self.decoded_content.append(val)
         # generate the 2D version
         self._gen_2D()
@@ -499,8 +497,7 @@ class TileLayer(object):
     def _gen_2D(self):
         self.content2D = []
         # generate the needed lists
-        for xpos in xrange(self.width):
-            self.content2D.append([])
+        self.content2D.extend([] for _ in xrange(self.width))
         # fill them
         for xpos in xrange(self.width):
             for ypos in xrange(self.height):
@@ -616,8 +613,7 @@ def decompress_zlib(in_str):
     :returns: uncompressed string
     """
     import zlib
-    s = zlib.decompress(in_str)
-    return s
+    return zlib.decompress(in_str)
 #-------------------------------------------------------------------------------
 class TileMapParser(object):
     u"""
@@ -687,18 +683,21 @@ class TileMapParser(object):
             if layer.encoding:
                 layer.encoded_content = node.lastChild.nodeValue
             else:
-                layer.encoded_content = []
-                for child in node.childNodes:
-                    if child.nodeType == Node.ELEMENT_NODE and child.nodeName == "tile":
-                        val = child.attributes["gid"].nodeValue
-                        layer.encoded_content.append(val)
+                layer.encoded_content = [
+                    child.attributes["gid"].nodeValue
+                    for child in node.childNodes
+                    if child.nodeType == Node.ELEMENT_NODE
+                    and child.nodeName == "tile"
+                ]
         world_map.layers.append(layer)
 
     def _build_world_map(self, world_node):
         world_map = TileMap()
         self._set_attributes(world_node, world_map)
         if world_map.version != u"1.0":
-            raise Exception(u'this parser was made for maps of version 1.0, found version %s' % world_map.version)
+            raise Exception(
+                f'this parser was made for maps of version 1.0, found version {world_map.version}'
+            )
         for node in self._get_nodes(world_node.childNodes, u'tileset'):
             self._build_tile_set(node, world_map)
         for node in self._get_nodes(world_node.childNodes, u'layer'):

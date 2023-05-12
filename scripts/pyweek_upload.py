@@ -11,7 +11,7 @@ class Upload:
 
 boundary = '--------------GHSKFJDLGDS7543FJKLFHRE75642756743254'
 sep_boundary = '\n--' + boundary
-end_boundary = sep_boundary + '--'
+end_boundary = f'{sep_boundary}--'
 
 def mimeEncode(data, sep_boundary=sep_boundary, end_boundary=end_boundary):
     '''Take the mapping of data and construct the body of a

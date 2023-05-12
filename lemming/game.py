@@ -83,10 +83,9 @@ class Game(object):
         self.level_filename = level_filename
         if level_filename is None:
             self.current_screen = mainmenu.MainMenu(self)
-            self.current_screen.start()
         else:
             self.current_screen = levelplayer.LevelPlayer(self, open(level_filename, 'rb'))
-            self.current_screen.start()
+        self.current_screen.start()
         pyglet.app.run()
 
     def clearCurrentScreen(self):

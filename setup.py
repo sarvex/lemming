@@ -221,10 +221,7 @@ def make_dirs(dname_):
     parts = list(os.path.split(dname_))
     dname = None
     while len(parts):
-        if dname == None:
-            dname = parts.pop(0)
-        else:
-            dname = os.path.join(dname,parts.pop(0))
+        dname = parts.pop(0) if dname is None else os.path.join(dname,parts.pop(0))
         if not os.path.isdir(dname):
             os.mkdir(dname)
 
@@ -240,35 +237,5 @@ if cmd in ('py2exe','cx_freeze','py2app'):
 
 # make a tgz files.
 if cmd == 'cx_freeze':
-    sys_cmd = "cd dist; tar -vczf %s.tgz %s/" % (app_dist_dir,app_dist_dir)  
+    sys_cmd = f"cd dist; tar -vczf {app_dist_dir}.tgz {app_dist_dir}/"
     os.system(sys_cmd)
-
-
-# remove files from the zip.
-if 0 and cmd in ('py2exe'):
-    import shutil
-
-    #shutil.rmtree( os.path.join('dist') )
-    #shutil.rmtree( os.path.join('build') )
-
-
-    os.system("unzip dist/library.zip -d dist\library")
-
-    for fn in files_to_remove:
-        os.remove( os.path.join('dist', 'library', fn) )
-
-
-    for d in directories_to_remove:
-        if os.path.exists( os.path.join('dist', 'library', d) ):
-            shutil.rmtree( os.path.join('dist', 'library', d) )
-
-    os.remove( os.path.join('dist', 'library.zip') )
-
-
-    os.chdir("dist")
-    os.chdir("library")
-
-    os.system("zip -r -9 ..\library.zip .")
-
-    os.chdir("..")
-    os.chdir("..")

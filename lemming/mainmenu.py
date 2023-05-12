@@ -89,6 +89,6 @@ class MainMenu(Screen):
             self.arrow_position = (self.arrow_position - 1) % 2
         elif symbol == pyglet.window.key.DOWN:
             self.arrow_position = (self.arrow_position + 1) % 2
-        elif symbol == pyglet.window.key.SPACE or symbol == pyglet.window.key.ENTER:
+        elif symbol in [pyglet.window.key.SPACE, pyglet.window.key.ENTER]:
             self.arrow_positions[self.arrow_position][1]()
 

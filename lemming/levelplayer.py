@@ -23,9 +23,7 @@ def sign(n):
         return 0
 
 def abs_min(a, b):
-    if abs(a) < abs(b):
-        return a
-    return b
+    return a if abs(a) < abs(b) else b
 
 class mdict(dict):
     def __setitem__(self, key, value):
@@ -272,12 +270,20 @@ class Bullet(PhysicsObject):
 
 class Monster(PhysicsObject):
     def __init__(self, pos, size, group, batch, game, direction, throw_vel=None):
-        if direction > 0:
-            negate = ''
-        else:
-            negate = '-'
-        super(Monster, self).__init__(pos, Vec2d(0, 0), pyglet.sprite.Sprite(game.animations[negate+'monster_still'],
-            x=pos.x, y=pos.y, group=group, batch=batch), size, direction=direction)
+        negate = '' if direction > 0 else '-'
+        super(Monster, self).__init__(
+            pos,
+            Vec2d(0, 0),
+            pyglet.sprite.Sprite(
+                game.animations[f'{negate}monster_still'],
+                x=pos.x,
+                y=pos.y,
+                group=group,
+                batch=batch,
+            ),
+            size,
+            direction=direction,
+        )
         self.game = game
         self.grabbing = False
         self.explodable = True
@@ -295,7 +301,11 @@ class Monster(PhysicsObject):
             else:
                 get_him = player_pos.x <= my_pos.x + 2 and player_pos.x >= my_pos.x-3
 
-            if get_him and (player_pos.y == my_pos.y or player_pos.y == my_pos.y + 1) and not self.grabbing:
+            if (
+                get_him
+                and player_pos.y in [my_pos.y, my_pos.y + 1]
+                and not self.grabbing
+            ):
                 self.grabbing = True
                 self.game.getGrabbedBy(self, self.throw_vel)
 
@@ -564,12 +574,12 @@ class LevelPlayer(Screen):
             animation = pyglet.image.Animation(frame_list)
             rev_animation = pyglet.image.Animation(rev_frame_list)
             self.animations[name.strip()] = animation
-            self.animations['-' + name.strip()] = rev_animation
+            self.animations[f'-{name.strip()}'] = rev_animation
 
             self.animation_offset[animation] = Vec2d(-int(off_x), -int(off_y))
             self.animation_offset[rev_animation] = Vec2d(int(off_x) + int(size_x), -int(off_y))
 
-        
+
         self.img_hud = pyglet.resource.image('hud.png')
         self.img_bullet = pyglet.resource.image('bullet.png')
         self.img_bomb = pyglet.resource.image('bomb.png')
@@ -587,7 +597,7 @@ class LevelPlayer(Screen):
             self.sprite_bg_left = None
             self.sprite_bg_right = None
 
-            
+
         if self.level.properties.has_key('fg_art'):
             img = pyglet.resource.image(self.level.properties['fg_art'])
             self.sprite_bg2_left = pyglet.sprite.Sprite(img, batch=self.batch_bg1)
@@ -640,14 +650,16 @@ class LevelPlayer(Screen):
 
     def getDesiredScroll(self, point):
         scroll = Vec2d(point) - Vec2d(self.game.window.width, self.game.window.height) / 2
-        if scroll.x < 0:
-            scroll.x = 0
-        if scroll.y < 0:
-            scroll.y = 0
-        if scroll.x > self.level.width * self.level.tilewidth - self.game.window.width:
-            scroll.x = self.level.width * self.level.tilewidth  - self.game.window.width
-        if scroll.y > self.level.height * self.level.tileheight - self.game.window.height:
-            scroll.y = self.level.height * self.level.tileheight  - self.game.window.height
+        scroll.x = max(scroll.x, 0)
+        scroll.y = max(scroll.y, 0)
+        scroll.x = min(
+            scroll.x,
+            self.level.width * self.level.tilewidth - self.game.window.width,
+        )
+        scroll.y = min(
+            scroll.y,
+            self.level.height * self.level.tileheight - self.game.window.height,
+        )
         return scroll
 
     def clear(self):
@@ -741,19 +753,21 @@ class LevelPlayer(Screen):
         negate = ''
         if monster.direction < 0:
             negate = '-'
-        monster.sprite.image = self.animations[negate+'monster_throw']
+        monster.sprite.image = self.animations[f'{negate}monster_throw']
         def reset_animation():
-            monster.sprite.image = self.animations[negate+'monster_still']
+            monster.sprite.image = self.animations[f'{negate}monster_still']
             self.lemmings[self.control_lemming].frame.vel = monster.vel + throw_vel
             self.lemmings[self.control_lemming].frame.pos = Vec2d(monster.pos.x+(1+monster.direction)*self.level.tilewidth, monster.pos.y)
             self.lemmings[self.control_lemming].sprite.visible = True
             self.held_by = None
             def not_grabbing(dt):
                 monster.grabbing = False
+
             pyglet.clock.schedule_once(not_grabbing, 2)
             monster.sprite.remove_handler('on_animation_end', reset_animation)
 
             self.sfx[['weee', 'woopee'][random.randint(0, 1)]].play()
+
         monster.sprite.set_handler('on_animation_end', reset_animation)
 
     def detatchHeadLemming(self):
@@ -783,14 +797,13 @@ class LevelPlayer(Screen):
         # break blocks
         it = Vec2d(0, 0)
         block_pos = (pos / tile_size).do(int)
-        for it.y in range(explosion_power * 2):
-            for it.x in range(explosion_power * 2):
-                pt = block_pos + it - Vec2d(explosion_power, explosion_power)
-                if pt.get_distance(block_pos) <= explosion_power:
-                    # affect block
-                    tile = self.getTile(pt)
-                    if tile.breakable:
-                        self.setTile(pt, self.tiles.enum.Air)
+        for it.y, it.x in itertools.product(range(explosion_power * 2), range(explosion_power * 2)):
+            pt = block_pos + it - Vec2d(explosion_power, explosion_power)
+            if pt.get_distance(block_pos) <= explosion_power:
+                # affect block
+                tile = self.getTile(pt)
+                if tile.breakable:
+                    self.setTile(pt, self.tiles.enum.Air)
 
         # see if we need to blow up any monsters
         if self.control_lemming < len(self.lemmings) and not caused_by_self:
